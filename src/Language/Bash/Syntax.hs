@@ -189,7 +189,12 @@ instance Pretty Redir where
         text (if heredocDelimQuoted
               then "'" ++ heredocDelim ++ "'"
               else heredocDelim) <> "\n" <>
-        pretty hereDocument <> text heredocDelim <> "\n"
+        pretty (trailingNewline hereDocument) <> text heredocDelim <> "\n"
+          where
+            trailingNewline [] = [Char '\n']
+            trailingNewline xs
+                | last xs == Char '\n' = xs
+                | otherwise = xs ++ [Char '\n']
 
     prettyList = foldr f empty
       where
