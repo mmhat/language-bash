@@ -65,7 +65,7 @@ data Span
     | CommandSubst String
       -- | A process substitution.
     | ProcessSubst ProcessSubstOp String
-    deriving (Data, Eq, Read, Show, Typeable, Generic)
+    deriving (Data, Eq, Ord, Read, Show, Typeable, Generic)
 
 instance Pretty Span where
     pretty (Char c)           = pretty c
@@ -87,7 +87,7 @@ instance {-# OVERLAPS #-} Pretty [Word] where
 
 -- | A parameter name an optional subscript.
 data Parameter = Parameter String (Maybe Word)
-    deriving (Data, Eq, Read, Show, Typeable, Generic)
+    deriving (Data, Eq, Ord, Read, Show, Typeable, Generic)
 
 instance Pretty Parameter where
     pretty (Parameter s sub) = pretty s <> subscript sub
@@ -166,7 +166,7 @@ data ParamSubst
         , convertAll        :: Bool
         , pattern           :: Word
         }
-    deriving (Data, Eq, Read, Show, Typeable, Generic)
+    deriving (Data, Eq, Ord, Read, Show, Typeable, Generic)
 
 prettyParameter :: Bool -> Parameter -> Doc ann -> Doc ann
 prettyParameter bang param suffix =

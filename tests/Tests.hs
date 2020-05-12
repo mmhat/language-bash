@@ -55,6 +55,19 @@ prop_expandsLikeBash = monadicIO $ forAllM braceExpr $ \str -> do
       run $ putStrLn check
       QCM.assert False
 
+expandsLikeBash :: String -> IO ()
+expandsLikeBash str = do
+    bash <- expandWithBash str
+    let check = unwords . filter (not . null) $ testExpand str
+    when (bash /= check) $ do
+      putStrLn "FAIL"
+      putStrLn "input:"
+      putStrLn str
+      putStrLn "bash output:"
+      putStrLn bash
+      putStrLn "test output:"
+      putStrLn check
+
 properties :: TestTree
 properties = testGroup "Properties" [testProperty "brace expansion" prop_expandsLikeBash]
 
