@@ -1,87 +1,130 @@
-/* **************************************************************** */
-/*								    */
-/*				YYLEX ()			    */
-/*								    */
-/* **************************************************************** */
+{
+module Language.Bash.Parse.Alex where
+}
 
-/* Reserved words.  These are only recognized as the first word of a
-   command. */
-STRING_INT_ALIST word_token_alist[] = {
-  { "if", IF },
-  { "then", THEN },
-  { "else", ELSE },
-  { "elif", ELIF },
-  { "fi", FI },
-  { "case", CASE },
-  { "esac", ESAC },
-  { "for", FOR },
-#if defined (SELECT_COMMAND)
-  { "select", SELECT },
-#endif
-  { "while", WHILE },
-  { "until", UNTIL },
-  { "do", DO },
-  { "done", DONE },
-  { "in", IN },
-  { "function", FUNCTION },
-#if defined (COMMAND_TIMING)
-  { "time", TIME },
-#endif
-  { "{", '{' },
-  { "}", '}' },
-  { "!", BANG },
-#if defined (COND_COMMAND)
-  { "[[", COND_START },
-  { "]]", COND_END },
-#endif
-#if defined (COPROCESS_SUPPORT)
-  { "coproc", COPROC },
-#endif
-  { (char *)NULL, 0}
-};
+%wrapper "basic"
 
-/* other tokens that can be returned by read_token() */
-STRING_INT_ALIST other_token_alist[] = {
-  /* Multiple-character tokens with special values */
-  { "--", TIMEIGN },
-  { "-p", TIMEOPT },
-  { "&&", AND_AND },
-  { "||", OR_OR },
-  { ">>", GREATER_GREATER },
-  { "<<", LESS_LESS },
-  { "<&", LESS_AND },
-  { ">&", GREATER_AND },
-  { ";;", SEMI_SEMI },
-  { ";&", SEMI_AND },
-  { ";;&", SEMI_SEMI_AND },
-  { "<<-", LESS_LESS_MINUS },
-  { "<<<", LESS_LESS_LESS },
-  { "&>", AND_GREATER },
-  { "&>>", AND_GREATER_GREATER },
-  { "<>", LESS_GREATER },
-  { ">|", GREATER_BAR },
-  { "|&", BAR_AND },
-  { "EOF", yacc_EOF },
-  /* Tokens whose value is the character itself */
-  { ">", '>' },
-  { "<", '<' },
-  { "-", '-' },
-  { "{", '{' },
-  { "}", '}' },
-  { ";", ';' },
-  { "(", '(' },
-  { ")", ')' },
-  { "|", '|' },
-  { "&", '&' },
-  { "newline", '\n' },
-  { (char *)NULL, 0}
-};
+:-
+    "if"        { \_ -> TokenIf }
+    "then"      { \_ -> TokenThen }
+    "else"      { \_ -> TokenElse }
+    "elif"      { \_ -> TokenElif }
+    "fi"        { \_ -> TokenFi }
+    "case"      { \_ -> TokenCase }
+    "esac"      { \_ -> TokenEsac }
+    "for"       { \_ -> TokenFor }
+    "select"    { \_ -> TokenSelect }
+    "while"     { \_ -> TokenWhile }
+    "until"     { \_ -> TokenUntil }
+    "do"        { \_ -> TokenDo }
+    "done"      { \_ -> TokenDone }
+    "in"        { \_ -> TokenIn }
+    "function"  { \_ -> TokenFunction }
+    "time"      { \_ -> TokenTime }
+    "{"         { \_ -> TokenBraceOpen }
+    "}"         { \_ -> TokenBraceClose }
+    "!"         { \_ -> TokenBang }
+    "[["        { \_ -> TokenCondStart }
+    "]]"        { \_ -> TokenCondEnd }
+    "coproc"    { \_ -> TokenCoproc }
 
-/* others not listed here:
-	WORD			look at yylval.word
-	ASSIGNMENT_WORD		look at yylval.word
-	NUMBER			look at yylval.number
-	ARITH_CMD		look at yylval.word_list
-	ARITH_FOR_EXPRS		look at yylval.word_list
-	COND_CMD		look at yylval.command
-*/
+    "--"        { \_ -> TokenTimeIgn }
+    "-p"        { \_ -> TokenTimeOpt }
+    "&&"        { \_ -> TokenAndAnd }
+    "||"        { \_ -> TokenOrOr }
+    ">>"        { \_ -> TokenGreaterGreater }
+    "<<"        { \_ -> TokenLessLess }
+    "<&"        { \_ -> TokenLessAnd }
+    ">&"        { \_ -> TokenGreaterAnd }
+    ";;"        { \_ -> TokenSemiSemi }
+    ";&"        { \_ -> TokenSemiAnd }
+    ";;&"       { \_ -> TokenSemiSemiAnd }
+    "<<-"       { \_ -> TokenLessLessMinus }
+    "<<<"       { \_ -> TokenLessLessLess }
+    "&>"        { \_ -> TokenAndGreater }
+    "&>>"       { \_ -> TokenAndGreaterGreater }
+    "<>"        { \_ -> TokenLessGreater }
+    ">|"        { \_ -> TokenGreaterBar }
+    "|&"        { \_ -> TokenBarAnd }
+
+    ">"         { \_ -> TokenGreater }
+    "<"         { \_ -> TokenLess }
+    "-"         { \_ -> TokenMinus }
+    ";"         { \_ -> TokenSemi }
+    "("         { \_ -> TokenParOpen }
+    ")"         { \_ -> TokenParClose }
+    "|"         { \_ -> TokenBar }
+    "&"         { \_ -> TokenAnd }
+    \ +         {       TokenWhiteSpaces }
+    \\\n        { \_ -> TokenEscapedChar '\n' }  -- Included by us
+    \n          { \_ -> TokenNewline }
+
+    -- Included by us
+    \'          { \_ -> TokenSingleQuote }
+    \"          { \_ -> TokenDoubleQuote }
+    \\.         { TokenEscapedChar . head . tail }
+    .           { TokenChar . head }
+{
+
+data Token
+    = TokenIf
+    | TokenThen
+    | TokenElse
+    | TokenElif
+    | TokenFi
+    | TokenCase
+    | TokenEsac
+    | TokenFor
+    | TokenSelect
+    | TokenWhile
+    | TokenUntil
+    | TokenDo
+    | TokenDone
+    | TokenIn
+    | TokenFunction
+    | TokenTime
+    | TokenBraceOpen
+    | TokenBraceClose
+    | TokenBang
+    | TokenCondStart
+    | TokenCondEnd
+    | TokenCoproc
+
+    | TokenTimeIgn
+    | TokenTimeOpt
+    | TokenAndAnd
+    | TokenOrOr
+    | TokenGreaterGreater
+    | TokenLessLess
+    | TokenLessAnd
+    | TokenGreaterAnd
+    | TokenSemiSemi
+    | TokenSemiAnd
+    | TokenSemiSemiAnd
+    | TokenLessLessMinus
+    | TokenLessLessLess
+    | TokenAndGreater
+    | TokenAndGreaterGreater
+    | TokenLessGreater
+    | TokenGreaterBar
+    | TokenBarAnd
+    | TokenEOF
+
+    | TokenGreater
+    | TokenLess
+    | TokenMinus
+    | TokenSemi
+    | TokenParOpen
+    | TokenParClose
+    | TokenBar
+    | TokenAnd
+    | TokenWhiteSpaces String
+    | TokenNewline
+
+    | TokenSingleQuote
+    | TokenDoubleQuote
+    | TokenEscapedChar Char
+    | TokenChar Char
+
+    deriving Show
+}

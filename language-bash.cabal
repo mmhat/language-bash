@@ -1,13 +1,14 @@
+cabal-version:      3.0
+
 name:               language-bash
 version:            0.9.2
 category:           Language
-license:            BSD3
+license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Kyle Raftogianis
 maintainer:         Kyle Raftogianis <knrafto@gmail.com>
 copyright:          Copyright (c) 2013-2020 Kyle Raftogianis
 build-type:         Simple
-cabal-version:      >= 1.8
 homepage:           http://github.com/knrafto/language-bash/
 bug-reports:        http://github.com/knrafto/language-bash/issues
 tested-with:        GHC == 7.10.1, GHC == 7.10.2, GHC == 8.0.2, GHC == 8.4.3, GHC == 8.8.3
@@ -41,16 +42,23 @@ library
 
   other-modules:
     Language.Bash.Operator
+    Language.Bash.Parse.Alex
     Language.Bash.Parse.Builder
+    Language.Bash.Parse.Happy
     Language.Bash.Parse.Internal
 
+  build-tool-depends: alex:alex, happy:happy
+
   build-depends:
+    array         >= 0.5 && < 1,
     base          >= 4.6 && < 5,
     parsec        >= 3.0 && < 4.0,
     prettyprinter >= 1.2 && < 2.0,
     transformers  >= 0.2 && < 0.6
 
   ghc-options: -Wall
+
+  default-language: Haskell2010
 
 test-suite tests
   type: exitcode-stdio-1.0
@@ -70,3 +78,5 @@ test-suite tests
     tasty-quickcheck,
     tasty-hunit,
     tasty-expected-failure
+
+  default-language: Haskell2010
