@@ -28,7 +28,7 @@ data U = U { postHeredoc :: Maybe (State D U) }
 type Parser = ParsecT D U Identity
 
 -- | Parse a script or input line into a (possibly empty) list of commands.
-parse :: SourceName -> String -> Either ParseError List
+parse :: SourceName -> String -> Either ParseError (BashSyn List)
 parse source = runParser script (U Nothing) source . pack (initialPos source)
 
 -------------------------------------------------------------------------------
@@ -88,12 +88,12 @@ newline = "newline" ?: do
     return "\n"
 
 -- | Parse a list terminator.
-listTerm :: Parser ListTerm
+listTerm :: Parser (BashSyn ListTerm)
 listTerm = term <* newlineList <?> "list terminator"
   where
-    term = Sequential   <$ newline
-       <|> Sequential   <$ operator ";"
-       <|> Asynchronous <$ operator "&"
+    term = Sequential ()   <$ newline
+       <|> Sequential ()   <$ operator ";"
+       <|> Asynchronous () <$ operator "&"
 
 -- | Skip zero or more newlines.
 newlineList :: Parser ()
@@ -104,44 +104,49 @@ newlineList = skipMany newline
 -------------------------------------------------------------------------------
 
 -- | Skip a redirection.
-redir :: Parser Redir
+redir :: Parser (BashSyn Redir)
 redir = normalRedir
     <|> heredocRedir
     <?> "redirection"
   where
-    normalRedir = do
-        redirDesc   <- optional ioDesc
-        redirOp     <- redirOperator
-        redirTarget <- anyWord
-        return Redir{..}
+    normalRedir :: Parser (BashSyn Redir)
+    normalRedir = Redir ()
+        <$> optional ioDesc
+        <*> redirOperator
+        <*> anyWord
 
+    heredocRedir :: Parser (BashSyn Redir)
     heredocRedir = do
         heredocOp <- heredocOperator
         w <- anyWord
         let heredocDelim = unquote w
             heredocDelimQuoted = stringToWord heredocDelim /= w
-        h <- heredoc (heredocOp == HereStrip) heredocDelim
+        h <- heredoc (heredocOp == HereStrip ()) heredocDelim
         hereDocument <- if heredocDelimQuoted
                         then return (stringToWord h)
                         else heredocWord h
-        return Heredoc{..}
+        return $ Heredoc ()
+            heredocOp
+            heredocDelim
+            heredocDelimQuoted
+            hereDocument
 
     redirOperator   = selectOperator operator <?> "redirection operator"
     heredocOperator = selectOperator operator <?> "here document operator"
 
 -- | Parse a list of redirections.
-redirList :: Parser [Redir]
+redirList :: Parser [BashSyn Redir]
 redirList = many redir
 
 -- | Parse part of a command.
-commandParts :: Parser a -> Parser ([a], [Redir])
+commandParts :: Parser a -> Parser ([a], [BashSyn Redir])
 commandParts p = partitionEithers <$> many part
   where
     part = Left  <$> p
        <|> Right <$> redir
 
 -- | Parse a simple command.
-simpleCommand :: Parser Command
+simpleCommand :: Parser (BashSyn Command)
 simpleCommand = do
     notFollowedBy reservedWord
     assignCommand </> normalCommand
@@ -150,14 +155,14 @@ simpleCommand = do
         rs1 <- redirList
         w <- assignBuiltin
         (args, rs2) <- commandParts assignArg
-        return $ Command (AssignBuiltin w args) (rs1 ++ rs2)
+        return $ Command () (AssignBuiltin () w args) (rs1 ++ rs2)
 
     normalCommand = "simple command" ?: do
         (as, rs1) <- commandParts assign
         (ws, rs2) <- commandParts anyWord
         let rs = rs1 ++ rs2
         guard (not $ null as && null ws && null rs)
-        return $ Command (SimpleCommand as ws) rs
+        return $ Command () (SimpleCommand () as ws) rs
 
     assignArg = Left  <$> assign
             <|> Right <$> anyWord
@@ -167,21 +172,16 @@ simpleCommand = do
 -------------------------------------------------------------------------------
 
 -- | A list with one command.
-singleton :: ShellCommand -> List
+singleton :: BashSyn ShellCommand -> BashSyn List
 singleton c =
-    List [Statement (Last (unmodifiedPipeline [Command c []])) Sequential]
+    List () [Statement () (Last () (unmodifiedPipeline [Command () c []])) (Sequential ())]
 
 -- | An unmodified pipeline.
-unmodifiedPipeline :: [Command] -> Pipeline
-unmodifiedPipeline cs = Pipeline
-    { timed      = False
-    , timedPosix = False
-    , inverted   = False
-    , commands   = cs
-    }
+unmodifiedPipeline :: [BashSyn Command] -> BashSyn Pipeline
+unmodifiedPipeline = Pipeline () False False False
 
 -- | Parse a pipeline.
-pipelineCommand :: Parser Pipeline
+pipelineCommand :: Parser (BashSyn Pipeline)
 pipelineCommand = time
               <|> invert
               <|> pipeline1
@@ -190,18 +190,18 @@ pipelineCommand = time
     invert = do
         _ <- word "!"
         p <- pipeline0
-        return $ p { inverted = not (inverted p) }
+        return $ modifyInverted not p
 
     time = do
         _ <- word "time"
         p <- posixFlag <|> invert <|> pipeline0
-        return $ p { timed = True }
+        return $ modifyTime (const True) p
 
     posixFlag = do
         _ <- word "-p"
         _ <- optional (word "--")
         p <- invert <|> pipeline0
-        return $ p { timedPosix = True }
+        return $ modifyPosixFlag (const True) p
 
     pipeline0 = unmodifiedPipeline <$> commandList0
     pipeline1 = unmodifiedPipeline <$> commandList1
@@ -216,28 +216,39 @@ pipelineCommand = time
           <|> addRedir c <$ operator "|&"
         (c' :) <$> commandList0
 
-    addRedir (Command c rs) = Command c (stderrRedir : rs)
+    addRedir :: BashSyn Command -> BashSyn Command
+    addRedir (Command ann c rs) = Command ann c (stderrRedir : rs)
 
-    stderrRedir = Redir (Just (IONumber 2)) OutAnd (stringToWord "1")
+    stderrRedir = Redir () (Just (IONumber () 2)) (OutAnd ()) (stringToWord "1")
+
+    modifyInverted :: (Bool -> Bool) -> BashSyn Pipeline -> BashSyn Pipeline
+    modifyInverted f (Pipeline ann timed timedPosix inverted cmds) =
+        Pipeline ann timed timedPosix (f inverted) cmds
+    modifyTime :: (Bool -> Bool) -> BashSyn Pipeline -> BashSyn Pipeline
+    modifyTime f (Pipeline ann timed timedPosix inverted cmds) =
+        Pipeline ann (f timed) timedPosix inverted cmds
+    modifyPosixFlag :: (Bool -> Bool) -> BashSyn Pipeline -> BashSyn Pipeline
+    modifyPosixFlag f (Pipeline ann timed timedPosix inverted cmds) =
+        Pipeline ann timed (f timedPosix) inverted cmds
 
 -- | Parse a compound list of commands.
-compoundList :: Parser List
-compoundList = List <$ newlineList <*> many1 statement <?> "list"
+compoundList :: Parser (BashSyn List)
+compoundList = List () <$ newlineList <*> many1 statement <?> "list"
   where
-    statement = Statement <$> andOr <*> option Sequential listTerm
+    statement = Statement () <$> andOr <*> option (Sequential ()) listTerm
 
     andOr = do
         p <- pipelineCommand
-        let rest = And p <$ operator "&&" <* newlineList <*> andOr
-               <|> Or  p <$ operator "||" <* newlineList <*> andOr
-        rest <|> pure (Last p)
+        let rest = And () p <$ operator "&&" <* newlineList <*> andOr
+               <|> Or ()  p <$ operator "||" <* newlineList <*> andOr
+        rest <|> pure (Last () p)
 
 -- | Parse a possible empty compound list of commands.
-inputList :: Parser List
-inputList = newlineList *> option (List []) compoundList
+inputList :: Parser (BashSyn List)
+inputList = newlineList *> option (List () []) compoundList
 
 -- | Parse a command group, wrapped either in braces or in a @do...done@ block.
-doGroup :: Parser List
+doGroup :: Parser (BashSyn List)
 doGroup = word "do" *> compoundList <* word "done"
       <|> word "{"  *> compoundList <* word "}"
 
@@ -246,7 +257,7 @@ doGroup = word "do" *> compoundList <* word "done"
 -------------------------------------------------------------------------------
 
 -- | Parse a compound command.
-shellCommand :: Parser ShellCommand
+shellCommand :: Parser (BashSyn ShellCommand)
 shellCommand = group
            <|> ifCommand
            <|> caseCommand
@@ -260,8 +271,8 @@ shellCommand = group
            <?> "compound command"
 
 -- | Parse a @case@ command.
-caseCommand :: Parser ShellCommand
-caseCommand = Case <$ word "case"
+caseCommand :: Parser (BashSyn ShellCommand)
+caseCommand = Case () <$ word "case"
           <*> anyWord <* newlineList
           <*  word "in" <* newlineList
           <*> clauses
@@ -269,10 +280,10 @@ caseCommand = Case <$ word "case"
     clauses = [] <$ word "esac"
           <|> do p <- pattern
                  c <- inputList
-                 nextClause (CaseClause p c)
+                 nextClause (CaseClause () p c)
 
     nextClause f = (:) <$> (f <$> clauseTerm) <* newlineList <*> clauses
-               <|> [f Break] <$ newlineList <* word "esac"
+               <|> [f (Break ())] <$ newlineList <* word "esac"
 
     pattern = optional (operator "(")
            *> anyWord `sepBy` operator "|"
@@ -282,63 +293,63 @@ caseCommand = Case <$ word "case"
     clauseTerm = selectOperator operator <?> "case clause terminator"
 
 -- | Parse a @while@ command.
-whileCommand :: Parser ShellCommand
-whileCommand = While <$ word "while"
+whileCommand :: Parser (BashSyn ShellCommand)
+whileCommand = While () <$ word "while"
            <*> compoundList
            <*  word "do" <*> compoundList <* word "done"
 
 -- | Parse an @until@ command.
-untilCommand :: Parser ShellCommand
-untilCommand = Until <$ word "until"
+untilCommand :: Parser (BashSyn ShellCommand)
+untilCommand = Until () <$ word "until"
            <*> compoundList
            <*  word "do" <*> compoundList <* word "done"
 
 -- | Parse a list of words for a @for@ or @select@ command.
-wordList :: Parser WordList
-wordList = Args <$ operator ";" <* newlineList
+wordList :: Parser (BashSyn WordList)
+wordList = Args () <$ operator ";" <* newlineList
        <|> newlineList *> inList
        <?> "word list"
   where
-    inList = WordList <$ word "in" <*> many anyWord <* listTerm
-         <|> pure Args
+    inList = WordList () <$ word "in" <*> many anyWord <* listTerm
+         <|> pure (Args ())
 
 -- | Parse a @for@ command.
-forCommand :: Parser ShellCommand
+forCommand :: Parser (BashSyn ShellCommand)
 forCommand = word "for" *> (arithFor_ <|> for_)
   where
-    arithFor_ = ArithFor <$> arith <* optional listTerm <*> doGroup
+    arithFor_ = ArithFor () <$> arith <* optional listTerm <*> doGroup
 
-    for_ = For <$> name <*> wordList <*> doGroup
+    for_ = For () <$> name <*> wordList <*> doGroup
 
 -- | Parse a @select@ command.
-selectCommand :: Parser ShellCommand
-selectCommand = Select <$ word "select" <*> name <*> wordList <*> doGroup
+selectCommand :: Parser (BashSyn ShellCommand)
+selectCommand = Select () <$ word "select" <*> name <*> wordList <*> doGroup
 
 -- | Parse an @if@ command.
-ifCommand :: Parser ShellCommand
+ifCommand :: Parser (BashSyn ShellCommand)
 ifCommand = word "if" *> if_
   where
-    if_ = If <$> compoundList <* word "then" <*> compoundList <*> alternative
+    if_ = If () <$> compoundList <* word "then" <*> compoundList <*> alternative
 
     alternative = Just . singleton <$ word "elif" <*> if_
               <|> Just             <$ word "else" <*> compoundList <* word "fi"
               <|> Nothing          <$ word "fi"
 
 -- | Parse a subshell command.
-subshell :: Parser ShellCommand
-subshell = Subshell <$ operator "(" <*> compoundList <* operator ")"
+subshell :: Parser (BashSyn ShellCommand)
+subshell = Subshell () <$ operator "(" <*> compoundList <* operator ")"
 
 -- | Parse a command group.
-group :: Parser ShellCommand
-group = Group <$ word "{" <*> compoundList <* word "}"
+group :: Parser (BashSyn ShellCommand)
+group = Group () <$ word "{" <*> compoundList <* word "}"
 
 -- | Parse an arithmetic command.
-arithCommand :: Parser ShellCommand
-arithCommand = Arith <$> arith
+arithCommand :: Parser (BashSyn ShellCommand)
+arithCommand = Arith () <$> arith
 
 -- | Parse a conditional command.
-condCommand :: Parser ShellCommand
-condCommand = Cond <$ word "[[" <*> expr <* word "]]"
+condCommand :: Parser (BashSyn ShellCommand)
+condCommand = Cond () <$ word "[[" <*> expr <* word "]]"
   where
     expr = buildExpressionParser opTable term
 
@@ -403,29 +414,29 @@ condCommand = Cond <$ word "[[" <*> expr <* word "]]"
 -------------------------------------------------------------------------------
 
 -- | Parse a coprocess command.
-coproc :: Parser ShellCommand
+coproc :: Parser (BashSyn ShellCommand)
 coproc = word "coproc" *> coprocCommand <?> "coprocess"
   where
-    coprocCommand = Coproc <$> option "COPROC" name
-                           <*> (Command <$> shellCommand <*> pure [])
-                </> Coproc "COPROC" <$> simpleCommand
+    coprocCommand = Coproc () <$> option "COPROC" name
+                           <*> (Command () <$> shellCommand <*> pure [])
+                </> Coproc () "COPROC" <$> simpleCommand
 
 -------------------------------------------------------------------------------
 -- Function definitions
 -------------------------------------------------------------------------------
 
 -- | Parse a function definition.
-functionDef :: Parser ShellCommand
+functionDef :: Parser (BashSyn ShellCommand)
 functionDef = functionDef2
           <|> functionDef1
           <?> "function definition"
   where
-    functionDef1 = FunctionDef
+    functionDef1 = FunctionDef ()
                <$> try (word "function" *> functionName
                         <* optional functionParens <* newlineList)
                <*> functionBody
 
-    functionDef2 = FunctionDef
+    functionDef2 = FunctionDef ()
                <$> try (functionName <* functionParens <* newlineList)
                <*> functionBody
 
@@ -434,16 +445,17 @@ functionDef = functionDef2
     functionBody = unwrap <$> group
                <|> singleton <$> shellCommand
 
-    unwrap (Group l) = l
-    unwrap _         = List []
+    unwrap :: BashSyn ShellCommand -> BashSyn List
+    unwrap (Group () l) = l
+    unwrap _            = List () []
 
 -------------------------------------------------------------------------------
 -- Commands
 -------------------------------------------------------------------------------
 
 -- | Parse a single command.
-command :: Parser Command
-command = Command <$> compoundCommand <*> redirList
+command :: Parser (BashSyn Command)
+command = Command () <$> compoundCommand <*> redirList
       <|> simpleCommand
       <?> "command"
   where
@@ -452,5 +464,5 @@ command = Command <$> compoundCommand <*> redirList
                   <|> functionDef
 
 -- | Parse an entire script (e.g. a file) as a list of commands.
-script :: Parser List
+script :: Parser (BashSyn List)
 script = skipSpace *> inputList <* eof

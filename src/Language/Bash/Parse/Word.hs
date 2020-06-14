@@ -332,16 +332,16 @@ subscript :: Stream s m Char => ParsecT s u m Word
 subscript = matchedPair '[' ']' True wordSpan
 
 -- | Parse an assignment.
-assign :: Stream s m Char => ParsecT s u m Assign
-assign = Assign <$> lvalue <*> assignOp <*> rvalue <?> "assignment"
+assign :: Stream s m Char => ParsecT s u m (BashSyn Assign)
+assign = Assign () <$> lvalue <*> assignOp <*> rvalue <?> "assignment"
   where
     lvalue = Parameter <$> name <*> optional subscript
 
-    assignOp = Equals     <$ string "="
-           <|> PlusEquals <$ string "+="
+    assignOp = Equals ()     <$ string "="
+           <|> PlusEquals () <$ string "+="
 
-    rvalue = RArray <$  char '(' <*> arrayElems <* char ')'
-         <|> RValue <$> word
+    rvalue = RArray () <$  char '(' <*> arrayElems <* char ')'
+         <|> RValue () <$> word
 
     arrayElems = arrayElem `surroundBy` skipArraySpace
 
