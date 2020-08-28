@@ -88,13 +88,13 @@ testMatches name parsed expected = testCase name $
                Left err -> assertFailure $ "parseError: " ++ show err
                Right ans -> expected @=? ans
 
-wrapCommands :: [BashSyn Command] -> BashSyn List
+wrapCommands :: [BashSyn () Command] -> BashSyn () List
 wrapCommands = List () . map (\c -> Statement () (Last () (Pipeline () False False False [c])) (Sequential ()))
 
-wrapCommand :: BashSyn Command -> BashSyn List
+wrapCommand :: BashSyn () Command -> BashSyn () List
 wrapCommand c = wrapCommands [c]
 
-tp :: TestName -> BashSyn List -> TestTree
+tp :: TestName -> BashSyn () List -> TestTree
 tp source expected = testMatches (show source)
                                  (Parse.parse "source" source)
                                  expected

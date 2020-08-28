@@ -79,15 +79,15 @@ reparse p input = mkPT $ \s0@(State _ _ u) ->
 -- | A token.
 data Token
     = TWord Word
-    | TIODesc (BashSyn IODesc)
+    | TIODesc (BashSyn () IODesc)
 
 -- | A stream with memoized results.
 data D = D
     { _token       :: Result D Token
     , _anyWord     :: Result D Word
-    , _ioDesc      :: Result D (BashSyn IODesc)
+    , _ioDesc      :: Result D (BashSyn () IODesc)
     , _anyOperator :: Result D String
-    , _assign      :: Result D (BashSyn Assign)
+    , _assign      :: Result D (BashSyn () Assign)
     , _uncons      :: Maybe (Char, D)
     }
 
@@ -158,7 +158,7 @@ operators =
     ]
 
 -- | Parse a descriptor.
-descriptor :: Stream s m Char => ParsecT s u m (BashSyn IODesc)
+descriptor :: Stream s m Char => ParsecT s u m (BashSyn () IODesc)
 descriptor = IONumber () . read <$> many1 digit
          <|> IOVar () <$ char '{' <*> I.name <* char '}'
 
@@ -184,7 +184,7 @@ assignBuiltin = anyWord `satisfying` (`elem` assignBuiltins)
     <?> "assignment builtin"
 
 -- | Parse a redirection word or number.
-ioDesc :: Monad m => ParsecT D u m (BashSyn IODesc)
+ioDesc :: Monad m => ParsecT D u m (BashSyn () IODesc)
 ioDesc = try (rat _ioDesc) <?> "IO descriptor"
 
 -- | Parse a variable name.
@@ -213,7 +213,7 @@ operator :: Monad m => String -> ParsecT D u m String
 operator op = anyOperator `satisfying` (== op) <?> op
 
 -- | Parse an assignment.
-assign :: Monad m => ParsecT D u m (BashSyn Assign)
+assign :: Monad m => ParsecT D u m (BashSyn () Assign)
 assign = try (rat _assign) <?> "assignment"
 
 -- | Parse an arithmetic expression.

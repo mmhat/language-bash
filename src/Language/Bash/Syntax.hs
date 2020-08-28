@@ -98,7 +98,7 @@ prettyBashDoc (BashDoc h t hds) = h <++> t $++$ hds
 class ToBashDoc a where
     toBashDoc :: a -> BashDoc ann
 
-prettyHeredocs :: [BashSyn Redir] -> Doc ann
+prettyHeredocs :: [BashSyn ann Redir] -> Doc ann'
 prettyHeredocs [] = mempty
 prettyHeredocs rs = mconcat $ intersperse hardline $ map prettyHeredoc rs
     where
@@ -114,16 +114,16 @@ prettyBlock :: Doc ann -> Doc ann -> Doc ann -> Doc ann -> Doc ann -> Doc ann
 prettyBlock pre cond bs block be = pre <+> cond <+> bs $+$ block $+$ be
 
 -- | Render a conditional command with a block whose condition is a list of statements.
-prettyBlockList :: Doc ann -> BashSyn List -> Doc ann -> Doc ann -> Doc ann -> Doc ann
+prettyBlockList :: (Show ann, Typeable ann) => Doc ann' -> BashSyn ann List -> Doc ann' -> Doc ann' -> Doc ann' -> Doc ann'
 prettyBlockList pre l bs block be
     | hasHeredoc l = pre <+> pretty l $+$ bs $+$ block $+$ be
     | otherwise    = prettyBlock pre (pretty l) bs block be
 
 -- | Does the last statement in a list have a here doc attached?
-hasHeredoc :: BashSyn List -> Bool
-hasHeredoc (List () []) = False
-hasHeredoc (List () xs) = let
-    Statement () l _ = last xs
+hasHeredoc :: (Show ann, Typeable ann) => BashSyn ann List -> Bool
+hasHeredoc (List _ []) = False
+hasHeredoc (List _ xs) = let
+    Statement _ l _ = last xs
     BashDoc _ _ hds = toBashDoc l
     in case hds of
         Empty -> False
@@ -132,135 +132,134 @@ hasHeredoc x = shouldNeverHappen "hasHeredoc" x
 
 data Command deriving Data
 data ShellCommand deriving Data
-data Redir deriving Data
-data Assign deriving Data
-data AssignBuiltin
-data List deriving Data
 data WordList deriving Data
 data CaseClause deriving Data
 data CaseTerm deriving Data
+data Redir deriving Data
 data IODesc deriving Data
 data RedirOp deriving Data
 data HeredocOp deriving Data
+data List deriving Data
 data Statement deriving Data
 data ListTerm deriving Data
 data AndOr deriving Data
 data Pipeline deriving Data
+data Assign deriving Data
 data AssignOp deriving Data
 data RValue deriving Data
 
-type family Ann t a where
-    Ann t t = ()
-    Ann _ _ = Void
+type family Ann ann t a where
+    Ann ann t t = ann
+    Ann _   _ _ = Void
 
-data BashSyn t
+data BashSyn ann t
       -- | A Bash command with redirections.
-    = Command (Ann Command t) (BashSyn ShellCommand) [BashSyn Redir]
+    = Command (Ann ann Command t) (BashSyn ann ShellCommand) [BashSyn ann Redir]
 
       -- | A simple command consisting of assignments followed by words.
-    | SimpleCommand (Ann ShellCommand t) [BashSyn Assign] [Word.Word]
+    | SimpleCommand (Ann ann ShellCommand t) [BashSyn ann Assign] [Word.Word]
       -- | The shell builtins @declare@, @eval@, @export@, @local@, @readonly@,
       -- and @typeset@ can accept both assignments and words as arguments.
-    | AssignBuiltin (Ann ShellCommand t) Word.Word [Either (BashSyn Assign) Word.Word]
+    | AssignBuiltin (Ann ann ShellCommand t) Word.Word [Either (BashSyn ann Assign) Word.Word]
       -- | A function name and definition.
-    | FunctionDef (Ann ShellCommand t) String (BashSyn List)  -- TODO: BashSynify function name
+    | FunctionDef (Ann ann ShellCommand t) String (BashSyn ann List)  -- TODO: BashSynify function name
       -- | A named coprocess.
-    | Coproc (Ann ShellCommand t) String (BashSyn Command)  -- TODO: BashSynify coproc name (?)
+    | Coproc (Ann ann ShellCommand t) String (BashSyn ann Command)  -- TODO: BashSynify coproc name (?)
       -- | A @(...)@ list, denoting a subshell.
-    | Subshell (Ann ShellCommand t) (BashSyn List)
+    | Subshell (Ann ann ShellCommand t) (BashSyn ann List)
       -- | A @{...}@ list.
-    | Group (Ann ShellCommand t) (BashSyn List)
+    | Group (Ann ann ShellCommand t) (BashSyn ann List)
       -- | An arithmetic expression.
-    | Arith (Ann ShellCommand t) String
+    | Arith (Ann ann ShellCommand t) String
       -- | A Bash @[[...]]@ conditional expression.
-    | Cond (Ann ShellCommand t) (CondExpr Word.Word)
+    | Cond (Ann ann ShellCommand t) (CondExpr Word.Word)
       -- | A @for /name/ in /words/@ command. If @in /words/@ is absent,
       -- the word list defaults to @\"$\@\"@.
-    | For (Ann ShellCommand t) String (BashSyn WordList) (BashSyn List)  -- TODO: BashSynify name
+    | For (Ann ann ShellCommand t) String (BashSyn ann WordList) (BashSyn ann List)  -- TODO: BashSynify name
       -- | An arithmetic @for ((...))@ command.
-    | ArithFor (Ann ShellCommand t) String (BashSyn List)  -- TODO: BashSynify name
+    | ArithFor (Ann ann ShellCommand t) String (BashSyn ann List)  -- TODO: BashSynify name
       -- | A @select /name/ in /words/@ command. If @in /words/@ is absent,
       -- the word list defaults to @\"$\@\"@.
-    | Select (Ann ShellCommand t) String (BashSyn WordList) (BashSyn List)  -- TODO: BashSynify name
+    | Select (Ann ann ShellCommand t) String (BashSyn ann WordList) (BashSyn ann List)  -- TODO: BashSynify name
       -- | A @case@ command.
-    | Case (Ann ShellCommand t) Word.Word [BashSyn CaseClause]
+    | Case (Ann ann ShellCommand t) Word.Word [BashSyn ann CaseClause]
       -- | An @if@ command, with a predicate, consequent, and alternative.
       -- @elif@ clauses are parsed as nested @if@ statements.
-    | If (Ann ShellCommand t) (BashSyn List) (BashSyn List) (Maybe (BashSyn List))
+    | If (Ann ann ShellCommand t) (BashSyn ann List) (BashSyn ann List) (Maybe (BashSyn ann List))
       -- | An @until@ command.
-    | Until (Ann ShellCommand t) (BashSyn List) (BashSyn List)
+    | Until (Ann ann ShellCommand t) (BashSyn ann List) (BashSyn ann List)
       -- | A @while@ command.
-    | While (Ann ShellCommand t) (BashSyn List) (BashSyn List)
+    | While (Ann ann ShellCommand t) (BashSyn ann List) (BashSyn ann List)
 
       -- | The arguments of a function/programm: @\"$\@\"@.
-    | Args (Ann WordList t)
+    | Args (Ann ann WordList t)
       -- | A word list.
-    | WordList (Ann WordList t) [Word.Word]
+    | WordList (Ann ann WordList t) [Word.Word]
 
       -- | A single case clause.
-    | CaseClause (Ann CaseClause t) [Word.Word] (BashSyn List) (BashSyn CaseTerm)
+    | CaseClause (Ann ann CaseClause t) [Word.Word] (BashSyn ann List) (BashSyn ann CaseTerm)
 
       -- | The case clause terminator @;;@.
-    | Break (Ann CaseTerm t)
+    | Break (Ann ann CaseTerm t)
       -- | The case clause terminator @;&@.
-    | FallThrough (Ann CaseTerm t)
+    | FallThrough (Ann ann CaseTerm t)
       -- | The case clause terminator @;;&@.
-    | Continue (Ann CaseTerm t)
+    | Continue (Ann ann CaseTerm t)
 
       -- | A redirection.
-    | Redir (Ann Redir t) (Maybe (BashSyn IODesc)) (BashSyn RedirOp) Word.Word
+    | Redir (Ann ann Redir t) (Maybe (BashSyn ann IODesc)) (BashSyn ann RedirOp) Word.Word
       -- | A here document.
-    | Heredoc (Ann Redir t) (BashSyn HeredocOp) String Bool Word.Word  -- TODO: BashSynify heredoc delimiter
+    | Heredoc (Ann ann Redir t) (BashSyn ann HeredocOp) String Bool Word.Word  -- TODO: BashSynify heredoc delimiter
 
       -- | A file descriptor number.
-    | IONumber (Ann IODesc t) Int
+    | IONumber (Ann ann IODesc t) Int
       -- | A variable @{/varname/}@ to allocate a file descriptor for.
-    | IOVar (Ann IODesc t) String
+    | IOVar (Ann ann IODesc t) String
 
       -- | The redirection operator @\<@.
-    | In (Ann RedirOp t)
+    | In (Ann ann RedirOp t)
       -- | The redirection operator @\>@.
-    | Out (Ann RedirOp t)
+    | Out (Ann ann RedirOp t)
       -- | The redirection operator @\>|@.
-    | OutOr (Ann RedirOp t)
+    | OutOr (Ann ann RedirOp t)
       -- | The redirection operator @\>\>@.
-    | Append (Ann RedirOp t)
+    | Append (Ann ann RedirOp t)
       -- | The redirection operator @&\>@.
-    | AndOut (Ann RedirOp t)
+    | AndOut (Ann ann RedirOp t)
       -- | The redirection operator @&\>\>@.
-    | AndAppend (Ann RedirOp t)
+    | AndAppend (Ann ann RedirOp t)
       -- | The redirection operator @\<\<\<@.
-    | HereString (Ann RedirOp t)
+    | HereString (Ann ann RedirOp t)
       -- | The redirection operator @\<&@.
-    | InAnd (Ann RedirOp t)
+    | InAnd (Ann ann RedirOp t)
       -- | The redirection operator @\>&@.
-    | OutAnd (Ann RedirOp t)
+    | OutAnd (Ann ann RedirOp t)
       -- | The redirection operator @\<\>@.
-    | InOut (Ann RedirOp t)
+    | InOut (Ann ann RedirOp t)
 
       -- | The here document operator @\<\<@.
-    | Here (Ann HeredocOp t)
+    | Here (Ann ann HeredocOp t)
       -- | The here document operator @\<\<-@.
-    | HereStrip (Ann HeredocOp t)
+    | HereStrip (Ann ann HeredocOp t)
 
       -- | A compound list of statements.
-    | List (Ann List t) [BashSyn Statement]
+    | List (Ann ann List t) [BashSyn ann Statement]
 
       -- | A single statement in a list.
-    | Statement (Ann Statement t) (BashSyn AndOr) (BashSyn ListTerm)
+    | Statement (Ann ann Statement t) (BashSyn ann AndOr) (BashSyn ann ListTerm)
 
       -- | The statement terminator @;@.
-    | Sequential (Ann ListTerm t)
+    | Sequential (Ann ann ListTerm t)
       -- | The statement terminator @&@.
-    | Asynchronous (Ann ListTerm t)
+    | Asynchronous (Ann ann ListTerm t)
 
       -- A right-associative list of pipelines.
       -- | The last pipeline of a list.
-    | Last (Ann AndOr t) (BashSyn Pipeline)
+    | Last (Ann ann AndOr t) (BashSyn ann Pipeline)
       -- | A @&&@ construct.
-    | And (Ann AndOr t) (BashSyn Pipeline) (BashSyn AndOr)
+    | And (Ann ann AndOr t) (BashSyn ann Pipeline) (BashSyn ann AndOr)
       -- | A @||@ construct.
-    | Or (Ann AndOr t) (BashSyn Pipeline) (BashSyn AndOr)
+    | Or (Ann ann AndOr t) (BashSyn ann Pipeline) (BashSyn ann AndOr)
 
       {- | A (possibly timed or inverted) pipeline, linked with @|@ or @|&@.
            'True' if the pipeline is timed with @time@.
@@ -270,165 +269,128 @@ data BashSyn t
            @command1 |& command2@ is treated as a shorthand for
            @command1 2>&1 | command2@.
       -}
-    | Pipeline (Ann Pipeline t) Bool Bool Bool [BashSyn Command]  -- TODO: BashSynify time, -p, !
+    | Pipeline (Ann ann Pipeline t) Bool Bool Bool [BashSyn ann Command]  -- TODO: BashSynify time, -p, !
 
       -- | An assignment.
-    | Assign (Ann Assign t) Word.Parameter (BashSyn AssignOp) (BashSyn RValue)
+    | Assign (Ann ann Assign t) Word.Parameter (BashSyn ann AssignOp) (BashSyn ann RValue)
 
       -- | An assignment operator @=@.
-    | Equals (Ann AssignOp t)
+    | Equals (Ann ann AssignOp t)
       -- | An assignment operator @+=@.
-    | PlusEquals (Ann AssignOp t)
+    | PlusEquals (Ann ann AssignOp t)
 
       -- | The right side of an assignment: A simple word.
-    | RValue (Ann RValue t) Word.Word
+    | RValue (Ann ann RValue t) Word.Word
       -- | The right side of an assignment: An array assignment, as @(subscript, word)@ pairs.
-    | RArray (Ann RValue t) [(Maybe Word.Word, Word.Word)]
+    | RArray (Ann ann RValue t) [(Maybe Word.Word, Word.Word)]
 
-deriving instance (ForallAnnC Data t, Data t, Typeable t) => Data (BashSyn t)
-deriving instance ForallAnnC Eq t => Eq (BashSyn t)
-deriving instance ForallAnnC Read t => Read (BashSyn t)
-deriving instance ForallAnnC Show t => Show (BashSyn t)
-deriving instance Typeable (BashSyn t)
-deriving instance Generic (BashSyn t)
+deriving instance (ForallAnnC Data ann t, Data ann, Data t, Typeable  ann, Typeable t) => Data (BashSyn ann t)
+deriving instance ForallAnnC Eq ann t => Eq (BashSyn ann t)
+deriving instance ForallAnnC Read ann t => Read (BashSyn ann t)
+deriving instance ForallAnnC Show ann t => Show (BashSyn ann t)
+deriving instance Typeable (BashSyn ann t)
+deriving instance Generic (BashSyn ann t)
 
---deriving instance Ord (BashSyn CaseTerm)
---deriving instance Bounded (BashSyn CaseTerm)
---deriving instance Enum (BashSyn CaseTerm)
+-- CaseTerm: deriving (Ord, Bounded, Enum)
 -- RedirOp: deriving (Ord, Enum, Bounded)
 -- HeredocOp: deriving (Ord, Enum, Bounded)
 -- ListTerm: deriving (Ord, Bounded, Enum)
 -- AssignOp: deriving (Ord, Bounded, Enum)
--- CondExpr: deriving (Functor, Foldable, Traversable)      -- | The arguments of a function/programm: @\"$\@\"@.
 
-type ForallAnnC (c :: * -> Constraint) t =
-    ( c (Ann AndOr t)
-    , c (Ann Assign t)
-    , c (Ann AssignOp t)
-    , c (Ann CaseClause t)
-    , c (Ann CaseTerm t)
-    , c (Ann Command t)
-    , c (Ann HeredocOp t)
-    , c (Ann IODesc t)
-    , c (Ann List t)
-    , c (Ann ListTerm t)
-    , c (Ann Pipeline t)
-    , c (Ann Redir t)
-    , c (Ann RedirOp t)
-    , c (Ann RValue t)
-    , c (Ann ShellCommand t)
-    , c (Ann Statement t)
-    , c (Ann WordList t)
-    --
-    , c (Ann Word.Parameter t)
-    , c (Ann Word.Word t)
+type ForallAnnC (c :: * -> Constraint) ann t =
+    ( c ann
+    , c (Ann ann AndOr t)
+    , c (Ann ann Assign t)
+    , c (Ann ann AssignOp t)
+    , c (Ann ann CaseClause t)
+    , c (Ann ann CaseTerm t)
+    , c (Ann ann Command t)
+    , c (Ann ann HeredocOp t)
+    , c (Ann ann IODesc t)
+    , c (Ann ann List t)
+    , c (Ann ann ListTerm t)
+    , c (Ann ann Pipeline t)
+    , c (Ann ann Redir t)
+    , c (Ann ann RedirOp t)
+    , c (Ann ann RValue t)
+    , c (Ann ann ShellCommand t)
+    , c (Ann ann Statement t)
+    , c (Ann ann WordList t)
     )
 
---      -- | A redirection.
---    | Redir
---        { -- | An optional file descriptor.
---          redirDesc   :: Maybe IODesc
---          -- | The redirection operator.
---        , redirOp     :: RedirOp
---          -- | The redirection target.
---        , redirTarget :: Word
---        }
---      -- | A here document.
---    | Heredoc
---        { -- | The here document operator.
---          heredocOp          :: HeredocOp
---          -- | The here document delimiter.
---        , heredocDelim       :: String
---          -- | 'True' if the delimiter was quoted.
---        , heredocDelimQuoted :: Bool
---          -- | The document itself, if the delimiter was quoted, no expansions
---          -- are parsed. If the delimiter was not quoted, parameter, arithmetic
---          -- and command substitutions take place.
---        , hereDocument       :: Word
---        }
-
---    { -- | 'True' if the pipeline is timed with @time@.
---      timed      :: Bool
---      -- | 'True' if the pipeline is timed with the @-p@ flag.
---    , timedPosix :: Bool
---      -- | 'True' if the pipeline is inverted with @!@.
---    , inverted   :: Bool
---      -- | A list of commands, separated by @|@, or @|&@.
---      -- @command1 |& command2@ is treated as a shorthand for
---      -- @command1 2>&1 | command2@.
---    , commands   :: [Command]
---    } deriving (Data, Eq, Read, Show, Typeable, Generic)
-
-instance Pretty (BashSyn Command) where
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann Command) where
     pretty = prettyBashDoc . toBashDoc
 
-instance ToBashDoc (BashSyn Command) where
-    toBashDoc (Command () c rs) = BashDoc mempty (pretty c <++> pretty rs) (prettyHeredocs $ filter isHeredoc rs)
+instance (Show ann, Typeable ann) => ToBashDoc (BashSyn ann Command) where
+    toBashDoc (Command _ c rs) = BashDoc mempty (pretty c <++> pretty rs) (prettyHeredocs $ filter isHeredoc rs)
         where
-            isHeredoc (Heredoc () _ _ _ _) = True
+            isHeredoc Heredoc {} = True
             isHeredoc _ = False
     toBashDoc x = shouldNeverHappen "ToBashDoc" x
 
-instance Pretty (BashSyn ShellCommand) where
-    pretty (SimpleCommand () as ws)  = pretty as <++> pretty ws
-    pretty (AssignBuiltin () w args) = pretty w <++> hsep (map (either pretty pretty) args)
-    pretty (FunctionDef () name l) =
-        pretty name <+> "()" $+$ pretty (Group () l :: BashSyn ShellCommand)
-    pretty (Coproc () name c) =
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann ShellCommand) where
+    pretty (SimpleCommand _ as ws)  = pretty as <++> pretty ws
+    pretty (AssignBuiltin _ w args) = pretty w <++> hsep (map (either pretty pretty) args)
+    pretty (FunctionDef _ name l) =
+        pretty name <+> "()" $+$ "{" $+$ indent' (pretty l) $+$ "}"
+    pretty (Coproc _ name c) =
         "coproc" <+> pretty name <+> pretty c
-    pretty (Subshell () l) =
+    pretty (Subshell _ l) =
         "(" <+> pretty l <+> ")"
-    pretty (Group () l) =
+    pretty (Group _ l) =
         "{" $+$ indent' (pretty l) $+$ "}"
-    pretty (Arith () s) =
+    pretty (Arith _ s) =
         "((" <> pretty s <> "))"
-    pretty (Cond () e) =
+    pretty (Cond _ e) =
         "[[" <+> pretty e <+> "]]"
-    pretty (For () w ws l) =
+    pretty (For _ w ws l) =
         prettyBlock "for" (pretty w <+> pretty ws <> ";") "do" (indent' $ pretty l) "done"
-    pretty (ArithFor () s l) =
+    pretty (ArithFor _ s l) =
         prettyBlock "for" ("((" <> pretty s <> "))") "do" (indent' $ pretty l) "done"
-    pretty (Select () w ws l) =
+    pretty (Select _ w ws l) =
         prettyBlock "select" (pretty w <++> pretty ws <> ";") "do" (indent' $ pretty l) "done"
-    pretty (Case () w cs) =
+    pretty (Case _ w cs) =
         prettyBlock "case" (pretty w) "in" (vcat $ map (indent' . pretty) cs) "esac"
-    pretty (If () p t f) =
+    pretty (If _ p t f) =
         prettyBlockList "if" p "then"
-        (indent' (pretty t) $++$ (maybe mempty (\l -> "else" $+$ indent' (pretty l)) f)
+        (indent' (pretty t) $++$ maybe mempty (\l -> "else" $+$ indent' (pretty l)) f
         )
         "fi"
-    pretty (Until () p l) =
+    pretty (Until _ p l) =
         prettyBlockList "until" p "do" (indent' $ pretty l) "done"
-    pretty (While () p l) =
+    pretty (While _ p l) =
         prettyBlockList "while" p "do" (indent' $ pretty l) "done"
     pretty x = shouldNeverHappen "Pretty" x
 
-instance Pretty (BashSyn WordList) where
-    pretty (Args ())        = mempty
-    pretty (WordList () ws) = "in" <+> pretty ws
-    pretty x                = shouldNeverHappen "Pretty" x
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann WordList) where
+    pretty (Args _)        = mempty
+    pretty (WordList _ ws) = "in" <+> pretty ws
+    pretty x               = shouldNeverHappen "Pretty" x
 
-instance Pretty (BashSyn CaseClause) where
-    pretty (CaseClause () ps l term) =
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann CaseClause) where
+    pretty (CaseClause _ ps l term) =
         hcat (punctuate " | " (map pretty ps)) <> ")" $+$
         indent' (pretty l) $+$
-        (indent' $ pretty term)
+        indent' (pretty term)
     pretty x = shouldNeverHappen "Pretty" x
 
-instance Operator (BashSyn CaseTerm) where
+instance Operator (BashSyn () CaseTerm) where
     operatorTable =
         [ (Break ()      , ";;" )
         , (FallThrough (), ";&" )
         , (Continue ()   , ";;&")
         ]
 
-instance Pretty (BashSyn CaseTerm) where
-    pretty = prettyOperator
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann CaseTerm) where
+    pretty (Break _)       = prettyOperator (Break () :: BashSyn () CaseTerm)
+    pretty (FallThrough _) = prettyOperator (FallThrough () :: BashSyn () CaseTerm)
+    pretty (Continue _)    = prettyOperator (Continue () :: BashSyn () CaseTerm)
+    pretty x               = shouldNeverHappen "Pretty" x
 
-instance Pretty (BashSyn Redir) where
-    pretty (Redir () redirDesc redirOp redirTarget) =
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann Redir) where
+    pretty (Redir _ redirDesc redirOp redirTarget) =
         pretty redirDesc <> pretty redirOp <> pretty redirTarget
-    pretty (Heredoc () heredocOp heredocDelim heredocDelimQuoted _) =
+    pretty (Heredoc _ heredocOp heredocDelim heredocDelimQuoted _) =
         pretty heredocOp <>
         pretty (if heredocDelimQuoted
               then "'" ++ heredocDelim ++ "'"
@@ -437,12 +399,12 @@ instance Pretty (BashSyn Redir) where
 
     prettyList = hsep . map pretty
 
-instance Pretty (BashSyn IODesc) where
-    pretty (IONumber () n) = pretty n
-    pretty (IOVar () n)    = "{" <> pretty n <> "}"
-    pretty x               = shouldNeverHappen "Pretty" x
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann IODesc) where
+    pretty (IONumber _ n) = pretty n
+    pretty (IOVar _ n)    = "{" <> pretty n <> "}"
+    pretty x              = shouldNeverHappen "Pretty" x
 
-instance Operator (BashSyn RedirOp) where
+instance Operator (BashSyn () RedirOp) where
     operatorTable =
         [ (In ()        , "<"  )
         , (Out ()       , ">"  )
@@ -456,64 +418,78 @@ instance Operator (BashSyn RedirOp) where
         , (InOut ()     , "<>" )
         ]
 
-instance Pretty (BashSyn RedirOp) where
-    pretty = prettyOperator
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann RedirOp) where
+    pretty (In _)         = prettyOperator (In () :: BashSyn () RedirOp)
+    pretty (Out _)        = prettyOperator (Out () :: BashSyn () RedirOp)
+    pretty (OutOr _)      = prettyOperator (OutOr () :: BashSyn () RedirOp)
+    pretty (Append _)     = prettyOperator (Append () :: BashSyn () RedirOp)
+    pretty (AndOut _)     = prettyOperator (AndOut () :: BashSyn () RedirOp)
+    pretty (AndAppend _)  = prettyOperator (AndAppend () :: BashSyn () RedirOp)
+    pretty (HereString _) = prettyOperator (HereString () :: BashSyn () RedirOp)
+    pretty (InAnd _)      = prettyOperator (InAnd () :: BashSyn () RedirOp)
+    pretty (OutAnd _)     = prettyOperator (OutAnd () :: BashSyn () RedirOp)
+    pretty (InOut _)      = prettyOperator (InOut () :: BashSyn () RedirOp)
+    pretty x              = shouldNeverHappen "Pretty" x
 
-instance Operator (BashSyn HeredocOp) where
+instance Operator (BashSyn () HeredocOp) where
     operatorTable =
         [ (Here ()     , "<<" )
         , (HereStrip (), "<<-")
         ]
 
-instance Pretty (BashSyn HeredocOp) where
-    pretty = prettyOperator
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann HeredocOp) where
+    pretty (Here _)      = prettyOperator (Here () :: BashSyn () HeredocOp)
+    pretty (HereStrip _) = prettyOperator (HereStrip () :: BashSyn () HeredocOp)
+    pretty x             = shouldNeverHappen "Pretty" x
 
-instance Pretty (BashSyn List) where
-    pretty (List () as) = pretty as
-    pretty x            = shouldNeverHappen "Pretty" x
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann List) where
+    pretty (List _ as) = pretty as
+    pretty x           = shouldNeverHappen "Pretty" x
 
-instance Pretty (BashSyn Statement) where
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann Statement) where
     pretty = prettyBashDoc . toBashDoc
 
     prettyList = foldr f mempty
       where
-        f a@(Statement () _ (Sequential ()))   b = pretty a $++$ b
-        f a@(Statement () _ (Asynchronous ())) b = pretty a <++> b
-        f x                                    _ = shouldNeverHappen "Pretty" x
+        f a@(Statement _ _ (Sequential _))   b = pretty a $++$ b
+        f a@(Statement _ _ (Asynchronous _)) b = pretty a <++> b
+        f x                                  _ = shouldNeverHappen "Pretty" x
 
-instance ToBashDoc (BashSyn Statement) where
-    toBashDoc (Statement () l lt) = toBashDoc l <> toBashDoc lt
-    toBashDoc x                   = shouldNeverHappen "ToBashDoc" x
+instance (Show ann, Typeable ann) => ToBashDoc (BashSyn ann Statement) where
+    toBashDoc (Statement _ l lt) = toBashDoc l <> toBashDoc lt
+    toBashDoc x                  = shouldNeverHappen "ToBashDoc" x
 
-instance Operator (BashSyn ListTerm) where
+instance Operator (BashSyn () ListTerm) where
     operatorTable =
         [ (Sequential ()  , ";" )
         , (Sequential ()  , "\n")
         , (Asynchronous (), "&" )
         ]
 
-instance Pretty (BashSyn ListTerm) where
-    pretty = prettyOperator
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann ListTerm) where
+    pretty (Sequential _)   = prettyOperator (Sequential () :: BashSyn () ListTerm)
+    pretty (Asynchronous _) = prettyOperator (Asynchronous () :: BashSyn () ListTerm)
+    pretty x                = shouldNeverHappen "Pretty" x
 
-instance ToBashDoc (BashSyn ListTerm) where
-    toBashDoc (Sequential ())   = docOp ";"
-    toBashDoc (Asynchronous ()) = docOp "&"
-    toBashDoc x                 = shouldNeverHappen "ToBashDoc" x
+instance (Show ann, Typeable ann) => ToBashDoc (BashSyn ann ListTerm) where
+    toBashDoc (Sequential _)   = docOp ";"
+    toBashDoc (Asynchronous _) = docOp "&"
+    toBashDoc x                = shouldNeverHappen "ToBashDoc" x
 
-instance Pretty (BashSyn AndOr) where
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann AndOr) where
     pretty = prettyBashDoc . toBashDoc
 
-instance ToBashDoc (BashSyn AndOr) where
-    toBashDoc (Last () p)  = toBashDoc p
-    toBashDoc (And () p a) = toBashDoc p <> docOp " &&" <> toBashDoc a
-    toBashDoc (Or () p a)  = toBashDoc p <> docOp " ||" <> toBashDoc a
-    toBashDoc x            = shouldNeverHappen "ToBashDoc" x
+instance (Show ann, Typeable ann) => ToBashDoc (BashSyn ann AndOr) where
+    toBashDoc (Last _ p)  = toBashDoc p
+    toBashDoc (And _ p a) = toBashDoc p <> docOp " &&" <> toBashDoc a
+    toBashDoc (Or _ p a)  = toBashDoc p <> docOp " ||" <> toBashDoc a
+    toBashDoc x           = shouldNeverHappen "ToBashDoc" x
 
-instance Pretty (BashSyn Pipeline) where
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann Pipeline) where
     pretty = prettyBashDoc . toBashDoc
 
-instance ToBashDoc (BashSyn Pipeline) where
-    toBashDoc (Pipeline () timed timedPosix inverted commands) = let
+instance (Show ann, Typeable ann) => ToBashDoc (BashSyn ann Pipeline) where
+    toBashDoc (Pipeline _ timed timedPosix inverted commands) = let
         timed'      = if timed      then "time" else mempty
         timedPosix' = if timedPosix then "-p"   else mempty
         inverted'   = if inverted   then "!"    else mempty
@@ -522,24 +498,26 @@ instance ToBashDoc (BashSyn Pipeline) where
         in prefix <> mconcat (intersperse (docOp " |") (map toBashDoc commands))
     toBashDoc x = shouldNeverHappen "ToBashDoc" x
 
-instance Pretty (BashSyn Assign) where
-    pretty (Assign () lhs op rhs) = pretty lhs <> pretty op <> pretty rhs
-    pretty x                      = shouldNeverHappen "Pretty" x
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann Assign) where
+    pretty (Assign _ lhs op rhs) = pretty lhs <> pretty op <> pretty rhs
+    pretty x                     = shouldNeverHappen "Pretty" x
 
     prettyList = hsep . map pretty
 
-instance Operator (BashSyn AssignOp) where
+instance Operator (BashSyn () AssignOp) where
     operatorTable =
         [ (Equals ()    , "=" )
         , (PlusEquals (), "+=")
         ]
 
-instance Pretty (BashSyn AssignOp) where
-    pretty = prettyOperator
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann AssignOp) where
+    pretty (Equals _)     = prettyOperator (Equals () :: BashSyn () AssignOp)
+    pretty (PlusEquals _) = prettyOperator (PlusEquals () :: BashSyn () AssignOp)
+    pretty x              = shouldNeverHappen "Pretty" x
 
-instance Pretty (BashSyn RValue) where
-    pretty (RValue () w)  = pretty w
-    pretty (RArray () rs) = "(" <> hsep (map f rs) <> ")"
+instance (Show ann, Typeable ann) => Pretty (BashSyn ann RValue) where
+    pretty (RValue _ w)  = pretty w
+    pretty (RArray _ rs) = "(" <> hsep (map f rs) <> ")"
       where
         f (Nothing , w) = pretty w
         f (Just sub, w) = "[" <> pretty sub <> "]=" <> pretty w

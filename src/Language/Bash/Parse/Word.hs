@@ -332,7 +332,7 @@ subscript :: Stream s m Char => ParsecT s u m Word
 subscript = matchedPair '[' ']' True wordSpan
 
 -- | Parse an assignment.
-assign :: Stream s m Char => ParsecT s u m (BashSyn Assign)
+assign :: Stream s m Char => ParsecT s u m (BashSyn () Assign)
 assign = Assign () <$> lvalue <*> assignOp <*> rvalue <?> "assignment"
   where
     lvalue = Parameter <$> name <*> optional subscript
